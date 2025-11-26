@@ -34,24 +34,22 @@ io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
     // 加入房间
-    // gameMode: 1=基础, 2=大乱斗, 3=无极限
     socket.on('joinRoom', ({ roomId, playerName, targetCount, gameMode }) => {
         socket.join(roomId);
 
-        // 1. 如果房间不存在，创建新房间
+        // 如果房间不存在，创建新房间
         if (!rooms[roomId]) {
             rooms[roomId] = {
-                mode: gameMode || 1, // 默认为基础
+                mode: gameMode || 1, 
                 players: [],
                 deck: [],
                 discardPile: [],
                 turnIndex: 0,
                 state: 'WAITING',
-                lastDiscard: null, // {char, fromSeat}
+                lastDiscard: null,
                 maxPlayers: targetCount || 4 
             };
         } else {
-            // 如果房间已存在且在等待中，更新设置 (解决刷新后旧设置残留问题)
             const room = rooms[roomId];
             if (room.state === 'WAITING') {
                 if (targetCount) room.maxPlayers = targetCount;
@@ -61,20 +59,17 @@ io.on('connection', (socket) => {
 
         const room = rooms[roomId];
 
-        // 校验模式一致性 (如果游戏已开始，则不能改模式)
         if (room.state === 'PLAYING' && room.mode !== gameMode) {
             socket.emit('errorMsg', '该房间正在进行另一种模式的游戏！');
             return;
         }
 
-        // --- 1. 单人模式 (PvE) - 仅限基础模式 ---
+        // --- 1. 单人模式 (PvE) ---
         if (room.maxPlayers === 1) {
             if (room.mode !== 1) {
                 socket.emit('errorMsg', '只有基础玩法支持单人模式');
                 return;
             }
-
-            // 重连逻辑
             if (room.players.length > 0) {
                 const p = room.players.find(p => !p.isBot);
                 if (p) {
@@ -86,11 +81,8 @@ io.on('connection', (socket) => {
                     return;
                 }
             }
-
-            // 初始化单人房
             room.players = [];
             room.players.push({ id: socket.id, name: playerName, hand: [], seat: 0, isReady: true, isBot: false });
-            // 填充机器人
             for(let i=1; i<=3; i++) {
                 room.players.push({
                     id: `bot_${roomId}_${i}`,
@@ -99,7 +91,6 @@ io.on('connection', (socket) => {
                 });
             }
             room.maxPlayers = 4; 
-
             socket.emit('joined', { seat: 0, maxPlayers: 4, mode: room.mode });
             io.to(roomId).emit('updatePlayers', room.players);
             startGame(roomId);
@@ -145,17 +136,16 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- 核心操作：摸牌 ---
+    // --- 摸牌 ---
     socket.on('drawCard', (roomId) => {
         const room = rooms[roomId];
         if (!room) return;
         const p = room.players[room.turnIndex];
         if (p.isBot || p.id !== socket.id) return;
 
-        // 牌堆耗尽处理
         if (room.deck.length === 0) { 
             if (room.mode === 3) {
-                endNoLimitGame(roomId); // 极限模式：比谁牌少
+                endNoLimitGame(roomId);
                 return;
             } else {
                 io.to(roomId).emit('gameLog', '流局'); 
@@ -167,7 +157,6 @@ io.on('connection', (socket) => {
         p.hand.push(card);
         room.lastDiscard = null;
 
-        // 极限模式惩罚：摸牌后强制跳过回合
         if (room.mode === 3) {
             io.to(roomId).emit('gameLog', `${p.name} 无法出牌，摸了一张`);
             room.turnIndex = (room.turnIndex + 1) % room.players.length;
@@ -176,7 +165,7 @@ io.on('connection', (socket) => {
         io.to(roomId).emit('updateGame', sanitizeState(room));
     });
 
-    // --- 核心操作：出牌 (包含顺序处理) ---
+    // --- 出牌 ---
     socket.on('discardCard', ({ roomId, cardIndices }) => {
         const room = rooms[roomId];
         if (!room) return;
@@ -184,7 +173,6 @@ io.on('connection', (socket) => {
         if (p.isBot || p.id !== socket.id) return;
         if (!cardIndices || cardIndices.length === 0) return;
 
-        // 验证
         if (room.mode === 3) {
              if (cardIndices.length < 3) {
                  socket.emit('errorMsg', '无极限模式至少打出3张牌！');
@@ -197,30 +185,21 @@ io.on('connection', (socket) => {
             }
         }
 
-        // --- 1. 提取出牌内容 (按前端点击顺序) ---
-        // cardIndices 已经是按点击顺序排列的 [第一次点, 第二次点...]
         const orderedChars = [];
         cardIndices.forEach(idx => {
-            if (idx >= 0 && idx < p.hand.length) {
-                orderedChars.push(p.hand[idx]); 
-            }
+            if (idx >= 0 && idx < p.hand.length) orderedChars.push(p.hand[idx]);
         });
 
-        // --- 2. 从手牌移除 (按索引倒序移除，防止错位) ---
         const indicesToRemove = [...cardIndices].sort((a, b) => b - a);
         indicesToRemove.forEach(idx => {
-            if (idx >= 0 && idx < p.hand.length) {
-                p.hand.splice(idx, 1);
-            }
+            if (idx >= 0 && idx < p.hand.length) p.hand.splice(idx, 1);
         });
 
-        // --- 3. 将提取出的牌放入弃牌堆 (保持造句顺序) ---
         orderedChars.forEach(char => {
             room.lastDiscard = { char: char, fromSeat: p.seat };
             room.discardPile.push(room.lastDiscard);
         });
 
-        // 胜利判断 (极限模式：手牌打空即胜)
         if (room.mode === 3) {
             if (p.hand.length === 0) {
                 io.to(roomId).emit('playerWin', { name: p.name, sentence: "率先出完手牌！", mode: room.mode });
@@ -229,17 +208,18 @@ io.on('connection', (socket) => {
             }
         }
 
-        // 轮次流转
         room.turnIndex = (room.turnIndex + 1) % room.players.length;
         io.to(roomId).emit('updateGame', sanitizeState(room));
 
         if (room.mode === 1) checkAiTurn(roomId);
     });
 
-    // --- 基础模式：捡漏 (吃) ---
+    // --- 捡漏 (吃) [已修复：支持模式2] ---
     socket.on('eatCard', (roomId) => {
         const room = rooms[roomId];
-        if (!room || room.mode !== 1) return; 
+        // 修正：允许模式 1 和 模式 2 都能吃牌
+        if (!room || (room.mode !== 1 && room.mode !== 2)) return; 
+
         const p = room.players[room.turnIndex];
         if (p.isBot || p.id !== socket.id) return;
 
@@ -251,16 +231,15 @@ io.on('connection', (socket) => {
         io.to(roomId).emit('updateGame', sanitizeState(room));
     });
 
-    // --- 大乱斗模式：结束故事 ---
+    // --- 结束故事 ---
     socket.on('endStory', (roomId) => {
         const room = rooms[roomId];
         if (!room || room.mode !== 2) return;
-
         const story = room.discardPile.map(c => c.char).join('');
         io.to(roomId).emit('playerWin', { name: "大家", sentence: story, mode: room.mode });
     });
 
-    // --- 基础模式：胡牌 ---
+    // --- 胡牌 ---
     socket.on('hu', ({roomId, sentence}) => {
         const room = rooms[roomId];
         if(room && room.mode === 1) {
@@ -268,7 +247,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    // 排序同步
     socket.on('swapHand', ({roomId, hand}) => {
         const room = rooms[roomId];
         if (room) {
@@ -287,7 +265,6 @@ io.on('connection', (socket) => {
                 if (!hasHuman) {
                     delete rooms[roomId];
                 } else {
-                    // 重置房间
                     room.state = 'WAITING';
                     room.turnIndex = 0;
                     room.lastDiscard = null;
@@ -307,18 +284,14 @@ io.on('connection', (socket) => {
     });
 });
 
-// --- 辅助函数 ---
-
 function startGame(roomId) {
     const room = rooms[roomId];
     room.state = 'PLAYING';
     room.deck = [...uniqueChars];
-    // 洗牌
     for(let i=room.deck.length-1; i>0; i--) {
         const j = Math.floor(Math.random()*(i+1));
         [room.deck[i], room.deck[j]] = [room.deck[j], room.deck[i]];
     }
-    // 发牌
     room.players.forEach(p => {
         p.hand = [];
         for(let i=0; i<13; i++) if(room.deck.length>0) p.hand.push(room.deck.pop());
@@ -337,7 +310,6 @@ function resetGameData(room) {
     room.players.forEach(p => { p.isReady = false; p.hand = []; });
 }
 
-// 极限模式：牌堆空，比手牌
 function endNoLimitGame(roomId) {
     const room = rooms[roomId];
     if(!room) return;
@@ -405,4 +377,6 @@ function sanitizeState(room) {
     };
 }
 
-server.listen(3000, () => console.log('Server running'));
+// 适配云平台端口
+const port = process.env.PORT || 3000;
+server.listen(port, () => console.log(`Server running on port ${port}`));
