@@ -79,7 +79,11 @@
             display: flex; gap: 5px; background: #f4f4f4; padding: 5px; 
             border-radius: 30px; border: 1px dashed #ccc; width: 100%; justify-content: space-around;
         }
-        .desc-text { font-size: 14px; color: #666; margin: 0; }
+        /* 更新说明文字样式，使其能容纳更多文字 */
+        .desc-text { 
+            font-size: 14px; color: #666; margin: 5px 0; 
+            line-height: 1.4; padding: 0 10px; text-align: center; 
+        }
         .btn-start {
             padding: 12px 0; font-size: 22px; width: 100%;
             background: var(--ink); color: #fff; border: none;
@@ -227,10 +231,11 @@
         <div id="login-screen">
             <div id="login-card">
                 <h1>文字麻将</h1>
+                <!-- 更新按钮名称 -->
                 <div class="option-row">
                     <button class="capsule-btn active" onclick="selectGameMode(1, this)">基础</button>
-                    <button class="capsule-btn" onclick="selectGameMode(2, this)">乱斗</button>
-                    <button class="capsule-btn" onclick="selectGameMode(3, this)">极限</button>
+                    <button class="capsule-btn" onclick="selectGameMode(2, this)">共创</button>
+                    <button class="capsule-btn" onclick="selectGameMode(3, this)">跑得快</button>
                 </div>
                 <p class="desc-text" id="mode-desc">摸一打一，凑词造句</p>
 
@@ -301,23 +306,26 @@
             selectGameMode(1, document.querySelector('.capsule-btn.active'));
         }
 
+        // 更新后的选择模式函数，包含完整说明
         function selectGameMode(mode, btn) {
             currentGameMode = mode;
             const group = btn.parentElement;
             group.querySelectorAll('.capsule-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
+            
             const desc = document.getElementById('mode-desc');
             const typeSw = document.getElementById('type-switch');
             const btnSingle = document.getElementById('btn-single');
             const btnMulti = document.getElementById('btn-multi');
+
             if(mode === 1) {
-                desc.innerText = "摸一打一，凑词造句";
+                desc.innerText = "摸一打一，可以捡上家打出的牌代替摸牌，谁先凑齐完整通顺的语句谁胡牌。";
                 typeSw.style.display = 'flex'; btnSingle.style.display = 'block';
             } else if(mode === 2) {
-                desc.innerText = "共创故事，随时结束";
+                desc.innerText = "摸一打一，可以捡上家打出的牌代替摸牌，一起共创出完整的诗句或故事。";
                 typeSw.style.display = 'none'; setType(2, btnMulti);
             } else if(mode === 3) {
-                desc.innerText = "至少出3张，先跑为敬";
+                desc.innerText = "每次至少出3张牌构成短语，否则摸一张牌。谁先打完谁胜出，牌尽则牌少者胜。";
                 typeSw.style.display = 'none'; setType(2, btnMulti);
             }
         }
@@ -394,10 +402,18 @@
              const t = document.getElementById('toast');
              t.innerText = msg; t.style.opacity = 1; setTimeout(()=>t.style.opacity=0, 2000);
         });
+
+        // 获胜弹窗逻辑
         socket.on('playerWin', data => {
             document.getElementById('win-modal').style.display = 'flex';
             document.getElementById('win-text').innerText = data.sentence;
-            document.getElementById('win-title').innerText = (data.mode===2 ? "故事完结" : (data.mode===3 ? "无极限胜出" : "绝世佳作"));
+            
+            // 更新这里的标题显示
+            let title = "绝世佳作"; 
+            if (data.mode === 2) title = "故事完结";
+            if (data.mode === 3) title = "跑得快胜出";
+            
+            document.getElementById('win-title').innerText = title;
             document.getElementById('win-author').innerText = `—— ${data.name}`;
         });
 
@@ -450,7 +466,6 @@
                 if (!selIndices.has(i)) d.style.transform = `rotate(${Math.random() * 2 - 1}deg)`;
                 if(selIndices.has(i)) {
                     d.classList.add('selected');
-                    // --- 核心：渲染点选顺序角标 ---
                     if (currentGameMode === 3) {
                         const order = Array.from(selIndices).indexOf(i) + 1;
                         const badge = document.createElement('div');
@@ -508,7 +523,6 @@
             btnHu.disabled = true;
             [btnDraw, btnEat, btnOut, btnHu, btnEnd].forEach(b => b.classList.remove('highlight'));
 
-            // 模式差异化显示
             if (currentGameMode === 3) { 
                 btnEat.style.display = 'none'; 
                 btnHu.style.display = 'none'; 
@@ -520,14 +534,12 @@
 
             if (!isMyTurn) return;
 
-            // 模式 1 和 模式 2 (摸打模式)
             if (currentGameMode === 1 || currentGameMode === 2) {
                 if (myHand.length % 3 === 1) {
                     btnDraw.disabled = false; 
                     btnDraw.classList.add('highlight');
                     btnOut.style.display = 'none';
                     
-                    // 修复：只要有最后一张牌，无论模式1还是模式2，都可以捡漏
                     if (lastDiscard) {
                         btnEat.disabled = false; 
                         btnEat.innerText = `捡 [${lastDiscard.char}]`;
@@ -548,7 +560,6 @@
                     if (currentGameMode === 2) btnEnd.disabled = false;
                 }
             } 
-            // 模式 3 (极限)
             else if (currentGameMode === 3) {
                 btnDraw.disabled = false; btnDraw.innerText = "不出/摸牌";
                 if (selIndices.size >= 3) { btnOut.disabled = false; btnOut.classList.add('highlight'); }
