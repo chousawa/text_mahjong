@@ -25,12 +25,10 @@
             width: 100%; height: 100%;
             overflow: hidden; 
             user-select: none; color: var(--ink);
-            /* 允许点击，禁止双击缩放 */
             touch-action: manipulation; 
             overscroll-behavior: none;
         }
 
-        /* 允许输入框选择文字 */
         input { user-select: text !important; -webkit-user-select: text !important; }
 
         #app { 
@@ -189,7 +187,6 @@
             box-shadow: 4px 4px 5px rgba(0,0,0,0.2); background: #fffdf0;
         }
 
-        /* 选中的序号角标 (核心样式) */
         .select-badge {
             position: absolute; top: -6px; right: -6px;
             background: var(--accent); color: white;
@@ -199,7 +196,6 @@
             border: 2px solid #fff; z-index: 101;
         }
 
-        /* Sortable 样式 */
         .sortable-ghost { opacity: 0.2; background: #000; border: 1px dashed #fff; }
         .sortable-drag { opacity: 0; }
 
@@ -500,32 +496,60 @@
             const btnHu = document.getElementById('btn-hu');
             const btnEnd = document.getElementById('btn-end');
 
-            btnDraw.style.display = 'block'; btnEat.style.display = 'block'; 
-            btnOut.style.display = 'block'; btnHu.style.display = 'block'; btnEnd.style.display = 'none';
-            btnDraw.disabled = true; btnEat.disabled = true; btnOut.disabled = true; btnHu.disabled = true;
+            btnDraw.style.display = 'block'; 
+            btnEat.style.display = 'block'; 
+            btnOut.style.display = 'block'; 
+            btnHu.style.display = 'block'; 
+            btnEnd.style.display = 'none';
+            
+            btnDraw.disabled = true; 
+            btnEat.disabled = true; 
+            btnOut.disabled = true; 
+            btnHu.disabled = true;
             [btnDraw, btnEat, btnOut, btnHu, btnEnd].forEach(b => b.classList.remove('highlight'));
 
-            if (currentGameMode !== 1) { btnEat.style.display = 'none'; btnHu.style.display = 'none'; }
-            if (currentGameMode === 2) { btnEnd.style.display = 'block'; }
+            // 模式差异化显示
+            if (currentGameMode === 3) { 
+                btnEat.style.display = 'none'; 
+                btnHu.style.display = 'none'; 
+            }
+            if (currentGameMode === 2) { 
+                btnHu.style.display = 'none'; 
+                btnEnd.style.display = 'block';
+            }
+
             if (!isMyTurn) return;
 
+            // 模式 1 和 模式 2 (摸打模式)
             if (currentGameMode === 1 || currentGameMode === 2) {
                 if (myHand.length % 3 === 1) {
-                    btnDraw.disabled = false; btnDraw.classList.add('highlight');
+                    btnDraw.disabled = false; 
+                    btnDraw.classList.add('highlight');
                     btnOut.style.display = 'none';
-                    if (currentGameMode === 1 && lastDiscard) {
-                        btnEat.disabled = false; btnEat.innerText = `捡 [${lastDiscard.char}]`;
+                    
+                    // 修复：只要有最后一张牌，无论模式1还是模式2，都可以捡漏
+                    if (lastDiscard) {
+                        btnEat.disabled = false; 
+                        btnEat.innerText = `捡 [${lastDiscard.char}]`;
                     } else {
-                        btnEat.disabled = true; btnEat.innerText = "捡漏";
+                        btnEat.disabled = true; 
+                        btnEat.innerText = "捡漏";
                     }
+                    
                     if (currentGameMode === 2) btnEnd.disabled = false; 
                 } else {
-                    btnDraw.style.display = 'none'; btnEat.style.display = 'none';
-                    if (selIndices.size === 1) { btnOut.disabled = false; btnOut.classList.add('highlight'); }
+                    btnDraw.style.display = 'none'; 
+                    btnEat.style.display = 'none';
+                    if (selIndices.size === 1) { 
+                        btnOut.disabled = false; 
+                        btnOut.classList.add('highlight'); 
+                    }
                     if (currentGameMode === 1) btnHu.disabled = false;
                     if (currentGameMode === 2) btnEnd.disabled = false;
                 }
-            } else if (currentGameMode === 3) {
+            } 
+            // 模式 3 (极限)
+            else if (currentGameMode === 3) {
                 btnDraw.disabled = false; btnDraw.innerText = "不出/摸牌";
                 if (selIndices.size >= 3) { btnOut.disabled = false; btnOut.classList.add('highlight'); }
             }
@@ -534,10 +558,8 @@
         function doDraw() { socket.emit('drawCard', myRoom); }
         function doEat() { socket.emit('eatCard', myRoom); }
 
-        // --- 关键：发送正确的点选顺序 ---
         function doOut() { 
             if(selIndices.size === 0) return;
-            // 这里的 Array.from(Set) 天然保持了插入顺序，即点击顺序
             socket.emit('discardCard', {roomId: myRoom, cardIndices: Array.from(selIndices)}); 
             selIndices.clear();
         }
