@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>文字麻将 - 涂鸦大乱斗</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=ZCOOL+KuaiLe&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+
+    <style>
+        :root {
+            --paper: #f4f1ea; 
+            --ink: #2c3e50;   
+            --highlight: #ffeb3b; 
+            --accent: #e74c3c;    
+            --shadow: rgba(0,0,0,0.15);
+            --tile-w: 40px; --tile-h: 54px; --tile-fs: 26px;
+        }
+
+        html, body {
+            margin: 0; background: #333;
+            font-family: "ZCOOL KuaiLe", cursive, sans-serif;
+            width: 100%; height: 100%;
+            overflow: hidden; 
+            user-select: none; color: var(--ink);
+            /* 允许点击，禁止双击缩放 */
+            touch-action: manipulation; 
+            overscroll-behavior: none;
+        }
+
+        /* 允许输入框选择文字 */
+        input { user-select: text !important; -webkit-user-select: text !important; }
+
+        #app { 
+            background: var(--paper); 
+            position: relative; 
+            width: 100%; height: 100%;
+            overflow: hidden; 
+            background-image: linear-gradient(#e1e1e1 1px, transparent 1px);
+            background-size: 100% 26px;
+            display: flex; flex-direction: column;
+        }
+
+        /* --- UI 组件 --- */
+        .capsule-btn {
+            padding: 8px 16px; border: 2px solid transparent;
+            background: transparent; color: #888; cursor: pointer;
+            font-family: "ZCOOL KuaiLe", cursive; font-size: 16px;
+            border-radius: 20px; transition: 0.2s; white-space: nowrap;
+            pointer-events: auto; 
+        }
+        .capsule-btn.active {
+            background: var(--highlight); color: var(--ink); border-color: var(--ink);
+            font-weight: bold; box-shadow: 2px 2px 0 rgba(0,0,0,0.1); transform: rotate(-1deg);
+        }
+
+        .input-doodle {
+            padding: 10px; width: 150px; text-align: center; font-size: 18px;
+            border: 2px solid var(--ink); border-radius: 10px;
+            outline: none; background: #fff; font-family: "ZCOOL KuaiLe", cursive;
+        }
+
+        /* --- 登录界面 --- */
+        #login-screen {
+            position: absolute; z-index: 20000; top:0; left:0; width:100%; height:100%;
+            background: rgba(244, 241, 234, 0.98);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            gap: 20px;
+        }
+        #login-card {
+            background: #fff; padding: 30px 20px; width: 85%; max-width: 400px;
+            border: 3px solid var(--ink); border-radius: 20px;
+            box-shadow: 8px 8px 0 rgba(0,0,0,0.15);
+            display: flex; flex-direction: column; align-items: center; gap: 15px;
+            transform: rotate(-1deg);
+        }
+        h1 { margin: 0; font-size: 40px; color: var(--ink); text-shadow: 2px 2px 0 var(--highlight); }
+        .option-row {
+            display: flex; gap: 5px; background: #f4f4f4; padding: 5px; 
+            border-radius: 30px; border: 1px dashed #ccc; width: 100%; justify-content: space-around;
+        }
+        .desc-text { font-size: 14px; color: #666; margin: 0; }
+        .btn-start {
+            padding: 12px 0; font-size: 22px; width: 100%;
+            background: var(--ink); color: #fff; border: none;
+            border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+            box-shadow: 4px 4px 0 var(--accent); margin-top: 10px; cursor: pointer;
+        }
+        .btn-start:active { transform: scale(0.98); box-shadow: 2px 2px 0 var(--accent); }
+
+        /* --- 游戏界面 --- */
+        #game-view { display: none; width: 100%; height: 100%; position: relative; flex-direction: column; }
+
+        #table-area {
+            position: relative;
+            flex: 1; width: 100%;
+            background: rgba(255,255,255,0.3);
+            border-bottom: 2px dashed #bbb;
+        }
+
+        #p-my {
+            height: 240px; 
+            width: 100%;
+            background: #fff;
+            border-top: 3px solid var(--ink);
+            display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+            padding-top: 5px; box-shadow: 0 -5px 15px rgba(0,0,0,0.1);
+            z-index: 100;
+        }
+
+        .player-remote { position: absolute; display: flex; flex-direction: column; align-items: center; z-index: 10; }
+        .p-info { 
+            background: #fff; border: 2px solid var(--ink); 
+            font-size: 12px; padding: 1px 6px; border-radius: 8px;
+            box-shadow: 1px 1px 0 rgba(0,0,0,0.1); white-space: nowrap; margin-bottom: 2px;
+        }
+        .active .p-info { background: var(--highlight); font-weight: bold; transform: scale(1.1); z-index: 20;}
+        .tile-back { 
+            background: var(--ink); border: 1px solid #fff; border-radius: 3px; 
+            width: 20px; height: 28px;
+            background-image: repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(255,255,255,0.2) 3px, rgba(255,255,255,0.2) 6px);
+        }
+        #p-top { top: 10px; left: 50%; transform: translateX(-50%); }
+        #p-top .hand { display: flex; gap: 2px; }
+        #p-left { top: 80px; left: 10px; }
+        #p-left .hand { display: flex; flex-direction: column; gap: 1px; }
+        #p-right { top: 80px; right: 10px; }
+        #p-right .hand { display: flex; flex-direction: column; gap: 1px; }
+
+        #discard-zone {
+            position: absolute; 
+            top: 140px; left: 50%; transform: translateX(-50%);
+            width: 70%; bottom: 10px;
+            border: 2px dashed #999; border-radius: 15px;
+            display: flex; flex-wrap: wrap; justify-content: center; align-content: flex-start;
+            gap: 4px; padding: 8px; z-index: 1; overflow-y: auto; 
+            background: rgba(255,255,255,0.5);
+            touch-action: pan-y; 
+        }
+        #discard-zone .tile { 
+            width: 28px; height: 40px; font-size: 18px; 
+            background: #eee; border: 1px solid #999; box-shadow: 1px 1px 0 #ccc; cursor: default;
+        }
+        .last-card { 
+            background: #fff !important; border: 2px solid var(--accent) !important; 
+            transform: scale(1.2) rotate(5deg) !important; z-index: 2;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.3) !important;
+        }
+
+        #controls { display: flex; gap: 10px; margin-bottom: 5px; width: 100%; justify-content: center; flex-wrap: wrap; }
+        .game-btn {
+            padding: 8px 14px; font-size: 16px; color: #555;
+            background: #fff; border: 2px solid var(--ink);
+            border-radius: 10px; cursor: pointer; font-family: "ZCOOL KuaiLe", cursive;
+            box-shadow: 2px 2px 0 rgba(0,0,0,0.1); flex: 0 0 auto;
+        }
+        .game-btn.highlight {
+            background: var(--highlight); color: var(--ink);
+            transform: translateY(-3px) rotate(-1deg);
+            box-shadow: 4px 4px 0 rgba(0,0,0,0.15); font-weight: bold;
+        }
+        .game-btn:disabled { opacity: 0.3; background: #eee; border-style: dashed; box-shadow: none; transform: none; }
+        .btn-finish { border-color: var(--accent); color: var(--accent); }
+
+        /* --- 手牌容器 --- */
+        #my-hand { 
+            width: 96%; height: 100%;
+            display: flex; flex-wrap: wrap; justify-content: center; align-content: flex-start;
+            gap: 6px; padding: 5px;
+            overflow-y: auto;
+            touch-action: none; 
+        }
+
+        .tile {
+            width: var(--tile-w); height: var(--tile-h);
+            background: #fff; border: 2px solid var(--ink);
+            border-radius: 6px;
+            display: flex; justify-content: center; align-items: center;
+            font-size: var(--tile-fs); font-weight: bold; color: var(--ink);
+            position: relative; box-shadow: 2px 2px 0 rgba(0,0,0,0.15);
+            transition: transform 0.1s; cursor: grab;
+            touch-action: none; 
+            user-select: none; 
+        }
+        .tile.selected {
+            transform: translateY(-8px) scale(1.05); border-color: var(--accent); z-index: 100;
+            box-shadow: 4px 4px 5px rgba(0,0,0,0.2); background: #fffdf0;
+        }
+
+        /* 选中的序号角标 (核心样式) */
+        .select-badge {
+            position: absolute; top: -6px; right: -6px;
+            background: var(--accent); color: white;
+            width: 18px; height: 18px; border-radius: 50%;
+            font-size: 12px; line-height: 18px; text-align: center;
+            box-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+            border: 2px solid #fff; z-index: 101;
+        }
+
+        /* Sortable 样式 */
+        .sortable-ghost { opacity: 0.2; background: #000; border: 1px dashed #fff; }
+        .sortable-drag { opacity: 0; }
+
+        #toast {
+            position: absolute; top: 30%; width: 100%; text-align: center;
+            font-size: 48px; font-weight: bold; color: var(--accent); 
+            text-shadow: 3px 3px 0 #fff, 5px 5px 0 var(--ink); 
+            opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 1000;
+        }
+
+        #win-modal {
+            display: none; position: fixed; z-index: 30000; top:0; left:0; width:100%; height:100%;
+            background: rgba(44, 62, 80, 0.95); justify-content: center; align-items: center;
+        }
+        .win-paper {
+            background: #fff; width: 80%; max-width: 400px; padding: 20px;
+            transform: rotate(-1deg); border: 3px solid var(--ink); box-shadow: 10px 10px 0 rgba(0,0,0,0.2);
+            text-align: center; position: relative;
+        }
+        #win-text {
+            font-size: 26px; border-bottom: 2px solid var(--accent); padding-bottom: 15px; margin: 20px 0;
+            line-height: 1.5; word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <!-- 登录界面 -->
+        <div id="login-screen">
+            <div id="login-card">
+                <h1>文字麻将</h1>
+                <div class="option-row">
+                    <button class="capsule-btn active" onclick="selectGameMode(1, this)">基础</button>
+                    <button class="capsule-btn" onclick="selectGameMode(2, this)">乱斗</button>
+                    <button class="capsule-btn" onclick="selectGameMode(3, this)">极限</button>
+                </div>
+                <p class="desc-text" id="mode-desc">摸一打一，凑词造句</p>
+
+                <div class="option-row" id="type-switch">
+                    <button class="capsule-btn" id="btn-single" onclick="setType(1, this)">单人创作</button>
+                    <button class="capsule-btn active" id="btn-multi" onclick="setType(2, this)">多人对战</button>
+                </div>
+
+                <div id="input-area" style="width:100%; display:flex; flex-direction:column; gap:10px; align-items:center; margin-top:10px;">
+                    <div id="count-row" style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size:18px;">人数:</span>
+                        <input type="number" id="player-count" class="input-doodle" style="width:60px;" min="2" max="4" value="4">
+                    </div>
+                    <input id="in-room" class="input-doodle" placeholder="房间号 (如888)">
+                    <input id="in-name" class="input-doodle" placeholder="你的昵称">
+                </div>
+                <button class="btn-start" onclick="join()" id="btn-start-text">开始游戏!</button>
+                <div id="msg" style="color:#888; font-size:12px;"></div>
+            </div>
+        </div>
+
+        <!-- 游戏主界面 -->
+        <div id="game-view">
+            <div id="toast">轮到你了!</div>
+
+            <div id="table-area">
+                <div id="p-top" class="player-remote"><div class="p-info">Top</div><div class="hand"><div class="tile-back" style="transform:rotate(90deg);margin:0 2px;"></div><div class="tile-back" style="transform:rotate(90deg);margin:0 2px;"></div><div class="tile-back" style="transform:rotate(90deg);margin:0 2px;"></div></div></div>
+                <div id="p-left" class="player-remote"><div class="p-info">Left</div><div class="hand"><div class="tile-back"></div><div class="tile-back"></div><div class="tile-back"></div></div></div>
+                <div id="p-right" class="player-remote"><div class="p-info">Right</div><div class="hand"><div class="tile-back"></div><div class="tile-back"></div><div class="tile-back"></div></div></div>
+                <div id="discard-zone"></div>
+            </div>
+
+            <div id="p-my">
+                <div id="controls">
+                    <button id="btn-draw" class="game-btn" onclick="doDraw()">摸牌</button>
+                    <button id="btn-eat" class="game-btn" onclick="doEat()">捡漏</button>
+                    <button id="btn-out" class="game-btn" onclick="doOut()">出牌</button>
+                    <button id="btn-hu" class="game-btn" style="color:var(--accent); border-color:var(--accent);" onclick="doHu()">胡牌!</button>
+                    <button id="btn-end" class="game-btn btn-finish" style="display:none;" onclick="doEndStory()">完结</button>
+                </div>
+                <div id="my-hand"></div>
+            </div>
+        </div>
+
+        <div id="win-modal">
+            <div class="win-paper">
+                <h3 style="margin-top:0; color:var(--ink);" id="win-title">绝世佳作</h3>
+                <div id="win-text"></div>
+                <div id="win-author" style="color:#666; font-size:16px; margin-bottom:20px;"></div>
+                <button class="capsule-btn active" style="font-size:20px; padding:10px 40px; border:2px solid var(--ink);" onclick="location.reload()">再来一局</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let mySeat = -1, myRoom = "", myHand = [], isMyTurn = false;
+        let currentGameMode = 1; 
+        let playerType = 2; 
+        let selIndices = new Set(); 
+        let maxPlayers = 4;
+        let sortable = null;
+
+        window.onload = function() {
+            if(localStorage.getItem('mj_room')) document.getElementById('in-room').value = localStorage.getItem('mj_room');
+            if(localStorage.getItem('mj_name')) document.getElementById('in-name').value = localStorage.getItem('mj_name');
+            selectGameMode(1, document.querySelector('.capsule-btn.active'));
+        }
+
+        function selectGameMode(mode, btn) {
+            currentGameMode = mode;
+            const group = btn.parentElement;
+            group.querySelectorAll('.capsule-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const desc = document.getElementById('mode-desc');
+            const typeSw = document.getElementById('type-switch');
+            const btnSingle = document.getElementById('btn-single');
+            const btnMulti = document.getElementById('btn-multi');
+            if(mode === 1) {
+                desc.innerText = "摸一打一，凑词造句";
+                typeSw.style.display = 'flex'; btnSingle.style.display = 'block';
+            } else if(mode === 2) {
+                desc.innerText = "共创故事，随时结束";
+                typeSw.style.display = 'none'; setType(2, btnMulti);
+            } else if(mode === 3) {
+                desc.innerText = "至少出3张，先跑为敬";
+                typeSw.style.display = 'none'; setType(2, btnMulti);
+            }
+        }
+
+        function setType(type, btn) {
+            playerType = type;
+            const group = document.getElementById('type-switch');
+            group.querySelectorAll('.capsule-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const startBtn = document.getElementById('btn-start-text');
+            const roomInput = document.getElementById('in-room');
+            const countRow = document.getElementById('count-row');
+            if(type === 1) {
+                roomInput.style.display = 'none'; countRow.style.display = 'none';
+                startBtn.innerText = "开始创作";
+            } else {
+                roomInput.style.display = 'block'; countRow.style.display = 'flex';
+                startBtn.innerText = "加入房间";
+            }
+        }
+
+        function join() {
+            let r, n, target;
+            if (playerType === 1 && currentGameMode === 1) {
+                r = "single_" + Date.now(); n = "独行诗人"; target = 1;
+            } else {
+                r = document.getElementById('in-room').value;
+                n = document.getElementById('in-name').value;
+                target = parseInt(document.getElementById('player-count').value);
+                if(!r || !n) return alert("请输入房间号和昵称");
+                if(target < 2 || target > 4) return alert("人数限制为 2-4 人");
+                localStorage.setItem('mj_room', r); localStorage.setItem('mj_name', n);
+            }
+            myRoom = r;
+            socket.emit('joinRoom', {roomId: r, playerName: n, targetCount: target, gameMode: currentGameMode});
+            document.getElementById('msg').innerText = "连接中...";
+            document.querySelector('.btn-start').disabled = true;
+        }
+
+        socket.on('errorMsg', msg => { alert(msg); document.querySelector('.btn-start').disabled = false; });
+        socket.on('joined', data => {
+            mySeat = data.seat; maxPlayers = data.maxPlayers; currentGameMode = data.mode; 
+            document.getElementById('msg').innerText = "已加入...";
+            socket.emit('ready', myRoom);
+        });
+        socket.on('updatePlayers', list => {
+            const readyCount = list.filter(p=>p.isReady).length;
+            if (maxPlayers > 1) document.getElementById('msg').innerText = `等待: ${readyCount} / ${maxPlayers}`;
+            else document.getElementById('msg').innerText = "正在开启...";
+        });
+        socket.on('gameStart', state => {
+            document.getElementById('login-screen').style.display = 'none';
+            document.getElementById('game-view').style.display = 'flex';
+
+            sortable = new Sortable(document.getElementById('my-hand'), {
+                animation: 200,
+                delay: 100, 
+                touchStartThreshold: 5, 
+                ghostClass: 'sortable-ghost',
+                dragClass: 'sortable-drag',
+                forceFallback: false, 
+                onEnd: (evt) => {
+                    const item = myHand.splice(evt.oldIndex, 1)[0];
+                    myHand.splice(evt.newIndex, 0, item);
+                    selIndices.clear();
+                    socket.emit('swapHand', {roomId: myRoom, hand: myHand});
+                    renderMyHand();
+                }
+            });
+            render(state);
+        });
+        socket.on('updateGame', state => render(state));
+        socket.on('gameLog', msg => {
+             const t = document.getElementById('toast');
+             t.innerText = msg; t.style.opacity = 1; setTimeout(()=>t.style.opacity=0, 2000);
+        });
+        socket.on('playerWin', data => {
+            document.getElementById('win-modal').style.display = 'flex';
+            document.getElementById('win-text').innerText = data.sentence;
+            document.getElementById('win-title').innerText = (data.mode===2 ? "故事完结" : (data.mode===3 ? "无极限胜出" : "绝世佳作"));
+            document.getElementById('win-author').innerText = `—— ${data.name}`;
+        });
+
+        function render(state) {
+            const players = state.players;
+            const prevTurn = isMyTurn;
+            isMyTurn = (state.turnIndex === mySeat);
+
+            if(isMyTurn && !prevTurn) {
+                if(navigator.vibrate) navigator.vibrate(100);
+                const t = document.getElementById('toast');
+                t.innerText = "轮到你了!"; t.style.opacity = 1; setTimeout(()=>t.style.opacity=0, 1500);
+            }
+
+            players.forEach(p => {
+                let pos = (p.seat - mySeat + 4) % 4;
+                let id = pos===0?'p-my':(pos===1?'p-right':(pos===2?'p-top':'p-left'));
+                if(pos !== 0) {
+                    const el = document.getElementById(id);
+                    el.querySelector('.p-info').innerText = `${p.name} (${p.hand.length})`;
+                    if(state.turnIndex === p.seat) el.classList.add('active'); else el.classList.remove('active');
+                    const h = el.querySelector('.hand'); h.innerHTML = '';
+                    for(let i=0; i<p.cardCount; i++) {
+                        const d = document.createElement('div'); 
+                        d.className = 'tile-back'; 
+                        if(pos===2) { d.style.transform = "rotate(90deg)"; d.style.margin = "0 2px"; }
+                        h.appendChild(d);
+                    }
+                } else {
+                    if (JSON.stringify(myHand) !== JSON.stringify(p.hand)) {
+                        myHand = p.hand; selIndices.clear(); renderMyHand();
+                    } else { checkBtns(state.lastDiscard); }
+                }
+            });
+
+            const dz = document.getElementById('discard-zone'); dz.innerHTML = '';
+            state.discardPile.forEach((c, i) => {
+                const d = document.createElement('div'); d.className = 'tile'; d.innerText = c.char;
+                if(i === state.discardPile.length-1) d.classList.add('last-card'); 
+                dz.appendChild(d);
+            });
+            dz.scrollTop = dz.scrollHeight;
+            checkBtns(state.lastDiscard);
+        }
+
+        function renderMyHand() {
+            const div = document.getElementById('my-hand'); div.innerHTML = '';
+            myHand.forEach((c, i) => {
+                const d = document.createElement('div'); d.className = 'tile'; d.innerText = c;
+                if (!selIndices.has(i)) d.style.transform = `rotate(${Math.random() * 2 - 1}deg)`;
+                if(selIndices.has(i)) {
+                    d.classList.add('selected');
+                    // --- 核心：渲染点选顺序角标 ---
+                    if (currentGameMode === 3) {
+                        const order = Array.from(selIndices).indexOf(i) + 1;
+                        const badge = document.createElement('div');
+                        badge.className = 'select-badge';
+                        badge.innerText = order;
+                        d.appendChild(badge);
+                    }
+                }
+
+                d.onclick = (e) => { 
+                    e.stopPropagation(); 
+                    toggleSelect(i); 
+                };
+                div.appendChild(d);
+            });
+        }
+
+        function toggleSelect(index) {
+            if (currentGameMode !== 3 && selIndices.size === 1 && !selIndices.has(index)) {
+                const oldIdx = Array.from(selIndices)[0];
+                const temp = myHand[oldIdx];
+                myHand[oldIdx] = myHand[index];
+                myHand[index] = temp;
+                socket.emit('swapHand', {roomId: myRoom, hand: myHand});
+                selIndices.clear();
+                renderMyHand();
+                if(navigator.vibrate) navigator.vibrate(30);
+                return;
+            }
+            if (currentGameMode === 3) {
+                if (selIndices.has(index)) selIndices.delete(index); else selIndices.add(index);
+            } else {
+                if (selIndices.has(index)) selIndices.clear(); else { selIndices.clear(); selIndices.add(index); }
+            }
+            renderMyHand();
+            checkBtns();
+        }
+
+        function checkBtns(lastDiscard) {
+            const btnDraw = document.getElementById('btn-draw');
+            const btnEat = document.getElementById('btn-eat');
+            const btnOut = document.getElementById('btn-out');
+            const btnHu = document.getElementById('btn-hu');
+            const btnEnd = document.getElementById('btn-end');
+
+            btnDraw.style.display = 'block'; btnEat.style.display = 'block'; 
+            btnOut.style.display = 'block'; btnHu.style.display = 'block'; btnEnd.style.display = 'none';
+            btnDraw.disabled = true; btnEat.disabled = true; btnOut.disabled = true; btnHu.disabled = true;
+            [btnDraw, btnEat, btnOut, btnHu, btnEnd].forEach(b => b.classList.remove('highlight'));
+
+            if (currentGameMode !== 1) { btnEat.style.display = 'none'; btnHu.style.display = 'none'; }
+            if (currentGameMode === 2) { btnEnd.style.display = 'block'; }
+            if (!isMyTurn) return;
+
+            if (currentGameMode === 1 || currentGameMode === 2) {
+                if (myHand.length % 3 === 1) {
+                    btnDraw.disabled = false; btnDraw.classList.add('highlight');
+                    btnOut.style.display = 'none';
+                    if (currentGameMode === 1 && lastDiscard) {
+                        btnEat.disabled = false; btnEat.innerText = `捡 [${lastDiscard.char}]`;
+                    } else {
+                        btnEat.disabled = true; btnEat.innerText = "捡漏";
+                    }
+                    if (currentGameMode === 2) btnEnd.disabled = false; 
+                } else {
+                    btnDraw.style.display = 'none'; btnEat.style.display = 'none';
+                    if (selIndices.size === 1) { btnOut.disabled = false; btnOut.classList.add('highlight'); }
+                    if (currentGameMode === 1) btnHu.disabled = false;
+                    if (currentGameMode === 2) btnEnd.disabled = false;
+                }
+            } else if (currentGameMode === 3) {
+                btnDraw.disabled = false; btnDraw.innerText = "不出/摸牌";
+                if (selIndices.size >= 3) { btnOut.disabled = false; btnOut.classList.add('highlight'); }
+            }
+        }
+
+        function doDraw() { socket.emit('drawCard', myRoom); }
+        function doEat() { socket.emit('eatCard', myRoom); }
+
+        // --- 关键：发送正确的点选顺序 ---
+        function doOut() { 
+            if(selIndices.size === 0) return;
+            // 这里的 Array.from(Set) 天然保持了插入顺序，即点击顺序
+            socket.emit('discardCard', {roomId: myRoom, cardIndices: Array.from(selIndices)}); 
+            selIndices.clear();
+        }
+        function doHu() { if(confirm("确认完成作品?")) socket.emit('hu', {roomId: myRoom, sentence: myHand.join('')}); }
+        function doEndStory() { if(confirm("认为故事已经完整，结束游戏?")) socket.emit('endStory', myRoom); }
+    </script>
+</body>
+</html>
